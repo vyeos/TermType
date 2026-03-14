@@ -9,7 +9,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -49,70 +48,42 @@ const (
 )
 
 type appSettings struct {
-	duration        time.Duration
-	mode            testMode
-	wordGoal        int
-	customWordsText string
-	customWords     []string
+	duration time.Duration
+	mode     testMode
+	wordGoal int
 }
 
-type settingsFocus int
-
-const (
-	settingsFocusMode settingsFocus = iota
-	settingsFocusDuration
-	settingsFocusWordGoal
-	settingsFocusCustomWords
-	settingsFocusSave
-	settingsFocusCancel
-)
-
 type keyMap struct {
-	quit     key.Binding
-	restart  key.Binding
-	settings key.Binding
+	quit    key.Binding
+	restart key.Binding
 }
 
 type model struct {
-	defaultWords        []string
-	rng                 *rand.Rand
-	session             typingSession
-	settings            appSettings
-	draftSettings       appSettings
-	settingsOpen        bool
-	settingsFocus       settingsFocus
-	settingsInput       textinput.Model
-	resumeAfterSettings bool
-	pauseStartedAt      time.Time
-	finishedElapsed     time.Duration
-	state               screenState
-	startedAt           time.Time
-	remaining           time.Duration
-	width               int
-	height              int
-	help                help.Model
-	keys                keyMap
+	defaultWords    []string
+	rng             *rand.Rand
+	session         typingSession
+	settings        appSettings
+	finishedElapsed time.Duration
+	state           screenState
+	startedAt       time.Time
+	remaining       time.Duration
+	width           int
+	height          int
+	help            help.Model
+	keys            keyMap
 }
 
 func newModel(words []string, rng *rand.Rand) model {
 	settings := defaultSettings()
-	input := newSettingsInput()
 
 	m := model{
-		defaultWords: append([]string(nil), words...),
-		rng:          rng,
-		settings:     settings,
-		draftSettings: appSettings{
-			duration:        settings.duration,
-			mode:            settings.mode,
-			wordGoal:        settings.wordGoal,
-			customWordsText: settings.customWordsText,
-			customWords:     append([]string(nil), settings.customWords...),
-		},
-		settingsInput: input,
-		state:         stateReady,
-		remaining:     settings.duration,
-		help:          help.New(),
+		defaultWords:    append([]string(nil), words...),
+		rng:             rng,
+		settings:        settings,
+		state:           stateReady,
+		remaining:       settings.duration,
+		help:            help.New(),
+		finishedElapsed: 0,
 		keys: keyMap{
 			quit: key.NewBinding(
 				key.WithKeys("q", "ctrl+c"),
@@ -121,10 +92,6 @@ func newModel(words []string, rng *rand.Rand) model {
 			restart: key.NewBinding(
 				key.WithKeys("r"),
 				key.WithHelp("r", "restart"),
-			),
-			settings: key.NewBinding(
-				key.WithKeys("ctrl+p"),
-				key.WithHelp("ctrl+p", "settings"),
 			),
 		},
 	}
@@ -143,15 +110,6 @@ func defaultSettings() appSettings {
 	}
 }
 
-func newSettingsInput() textinput.Model {
-	input := textinput.New()
-	input.Placeholder = "custom words separated by spaces, commas, or new lines"
-	input.Prompt = ""
-	input.Width = 44
-	input.Blur()
-	return input
-}
-
 func (m model) Init() tea.Cmd {
 	return nil
 }
@@ -164,16 +122,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		if m.state != stateRunning {
+		if m.state != stateRunning || m.settings.mode != modeTimed {
 			return m, nil
-		}
-
-		if m.settings.mode != modeTimed {
-			return m, nil
-		}
-
-		if m.settingsOpen {
-			return m, tickCmd()
 		}
 
 		elapsed := time.Time(msg).Sub(m.startedAt)
@@ -186,19 +136,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case tea.KeyMsg:
-		if m.settingsOpen {
-			if msg.Type == tea.KeyCtrlC {
-				return m, tea.Quit
-			}
-
-			return m.updateSettings(msg)
-		}
-
-		if key.Matches(msg, m.keys.settings) {
-			m.openSettings()
-			return m, nil
-		}
-
 		if key.Matches(msg, m.keys.quit) {
 			return m, tea.Quit
 		}
@@ -207,8 +144,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key.Matches(msg, m.keys.restart) {
 				m.resetSession()
 			}
-
 			return m, nil
+		}
+
+		if m.state == stateReady {
+			return m.updateReady(msg)
 		}
 
 		switch msg.Type {
@@ -243,72 +183,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) updateReady(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
-	case tea.KeyEsc:
-		m.closeSettings(false)
+	case tea.KeyTab:
+		m.toggleMode()
 		return m, nil
-	case tea.KeyTab, tea.KeyDown:
-		m.moveSettingsFocus(1)
-		return m, nil
-	case tea.KeyShiftTab, tea.KeyUp:
-		m.moveSettingsFocus(-1)
+	case tea.KeyUp, tea.KeyDown:
 		return m, nil
 	case tea.KeyLeft:
-		if m.settingsFocus == settingsFocusMode {
-			m.shiftMode(-1)
-			return m, nil
-		}
-		if m.settingsFocus == settingsFocusDuration {
-			m.shiftDuration(-1)
-			return m, nil
-		}
-		if m.settingsFocus == settingsFocusWordGoal {
-			m.shiftWordGoal(-1)
-			return m, nil
-		}
-		if m.settingsFocus == settingsFocusCancel {
-			m.settingsFocus = settingsFocusSave
-			m.syncSettingsInputFocus()
-		}
+		m.shiftActiveOption(-1)
 		return m, nil
 	case tea.KeyRight:
-		if m.settingsFocus == settingsFocusMode {
-			m.shiftMode(1)
-			return m, nil
-		}
-		if m.settingsFocus == settingsFocusDuration {
-			m.shiftDuration(1)
-			return m, nil
-		}
-		if m.settingsFocus == settingsFocusWordGoal {
-			m.shiftWordGoal(1)
-			return m, nil
-		}
-		if m.settingsFocus == settingsFocusSave {
-			m.settingsFocus = settingsFocusCancel
-			m.syncSettingsInputFocus()
-		}
+		m.shiftActiveOption(1)
 		return m, nil
-	case tea.KeyEnter:
-		switch m.settingsFocus {
-		case settingsFocusSave:
-			m.closeSettings(true)
-			return m, nil
-		case settingsFocusCancel:
-			m.closeSettings(false)
-			return m, nil
-		}
 	}
 
-	if m.settingsFocus == settingsFocusCustomWords {
-		var cmd tea.Cmd
-		m.settingsInput, cmd = m.settingsInput.Update(msg)
-		m.draftSettings.customWordsText = m.settingsInput.Value()
-		return m, cmd
+	switch msg.Type {
+	case tea.KeyBackspace, tea.KeyCtrlH:
+		return m, nil
 	}
 
-	return m, nil
+	if len(msg.Runes) != 1 || !unicode.IsPrint(msg.Runes[0]) {
+		return m, nil
+	}
+
+	cmd := tea.Cmd(nil)
+	m.state = stateRunning
+	m.startedAt = time.Now()
+	m.remaining = m.settings.duration
+	if m.settings.mode == modeTimed {
+		cmd = tickCmd()
+	}
+
+	m.session.TypeRune(msg.Runes[0])
+	if m.settings.mode == modeWordGoal && len(m.session.typed) >= wordGoalCursor(m.session.prompt, m.settings.wordGoal) {
+		m.finishSession(time.Since(m.startedAt))
+		return m, nil
+	}
+
+	return m, cmd
 }
 
 func (m model) View() string {
@@ -317,9 +230,9 @@ func (m model) View() string {
 		width = 100
 	}
 
-	contentWidth := maxInt(50, width-6)
-	if width < 56 {
-		contentWidth = maxInt(20, width-2)
+	contentWidth := maxInt(56, width-6)
+	if width < 62 {
+		contentWidth = maxInt(24, width-2)
 	}
 
 	title := lipgloss.NewStyle().
@@ -346,7 +259,12 @@ func (m model) View() string {
 	body.WriteString(statusLine)
 	body.WriteString("\n\n")
 
-	if m.state == stateFinished {
+	if m.state == stateReady {
+		body.WriteString(m.renderStartOptions(contentWidth))
+		body.WriteString("\n\n")
+		body.WriteString(promptBox)
+		body.WriteString("\n\n")
+	} else if m.state == stateFinished {
 		body.WriteString(m.renderResults(contentWidth))
 		body.WriteString("\n\n")
 	} else {
@@ -363,10 +281,6 @@ func (m model) View() string {
 		Width(contentWidth).
 		Render(body.String())
 
-	if m.settingsOpen {
-		return m.renderSettingsModal(width)
-	}
-
 	if m.height > 0 {
 		return lipgloss.Place(width, m.height, lipgloss.Center, lipgloss.Center, content)
 	}
@@ -374,120 +288,60 @@ func (m model) View() string {
 	return content
 }
 
-func (m *model) openSettings() {
-	m.settingsOpen = true
-	m.draftSettings = appSettings{
-		duration:        m.settings.duration,
-		mode:            m.settings.mode,
-		wordGoal:        m.settings.wordGoal,
-		customWordsText: m.settings.customWordsText,
-		customWords:     append([]string(nil), m.settings.customWords...),
+func (m *model) toggleMode() {
+	if m.settings.mode == modeTimed {
+		m.settings.mode = modeWordGoal
+	} else {
+		m.settings.mode = modeTimed
 	}
-	m.settingsFocus = settingsFocusMode
-	m.settingsInput.SetValue(m.settings.customWordsText)
-	m.settingsInput.CursorEnd()
-	m.resumeAfterSettings = m.state == stateRunning
-	if m.resumeAfterSettings {
-		m.pauseStartedAt = time.Now()
-	}
-	m.syncSettingsInputFocus()
+
+	m.resetSession()
 }
 
-func (m *model) closeSettings(save bool) {
-	if save {
-		m.settings = appSettings{
-			duration:        m.draftSettings.duration,
-			mode:            m.draftSettings.mode,
-			wordGoal:        m.draftSettings.wordGoal,
-			customWordsText: m.settingsInput.Value(),
-		}
-		m.settings.customWords = append([]string(nil), parseCustomWords(m.settings.customWordsText)...)
-		m.settingsOpen = false
-		m.resumeAfterSettings = false
-		m.pauseStartedAt = time.Time{}
-		m.resetSession()
+func (m *model) shiftActiveOption(delta int) {
+	if m.settings.mode == modeTimed {
+		m.shiftDuration(delta)
 		return
 	}
 
-	m.settingsOpen = false
-	if m.resumeAfterSettings {
-		m.startedAt = m.startedAt.Add(time.Since(m.pauseStartedAt))
-		m.pauseStartedAt = time.Time{}
-		m.resumeAfterSettings = false
-	}
-}
-
-func (m *model) moveSettingsFocus(delta int) {
-	total := 6
-	next := (int(m.settingsFocus) + delta + total) % total
-	m.settingsFocus = settingsFocus(next)
-	m.syncSettingsInputFocus()
-}
-
-func (m *model) syncSettingsInputFocus() {
-	if m.settingsFocus == settingsFocusCustomWords {
-		m.settingsInput.Focus()
-		return
-	}
-
-	m.settingsInput.Blur()
+	m.shiftWordGoal(delta)
 }
 
 func (m *model) shiftDuration(delta int) {
 	index := 0
 	for i, option := range durationOptions {
-		if option == m.draftSettings.duration {
+		if option == m.settings.duration {
 			index = i
 			break
 		}
 	}
 
 	index = (index + delta + len(durationOptions)) % len(durationOptions)
-	m.draftSettings.duration = durationOptions[index]
-}
-
-func (m *model) shiftMode(delta int) {
-	modes := []testMode{modeTimed, modeWordGoal}
-	index := 0
-	for i, mode := range modes {
-		if mode == m.draftSettings.mode {
-			index = i
-			break
-		}
-	}
-
-	index = (index + delta + len(modes)) % len(modes)
-	m.draftSettings.mode = modes[index]
+	m.settings.duration = durationOptions[index]
+	m.resetSession()
 }
 
 func (m *model) shiftWordGoal(delta int) {
 	index := 0
 	for i, goal := range wordGoalOptions {
-		if goal == m.draftSettings.wordGoal {
+		if goal == m.settings.wordGoal {
 			index = i
 			break
 		}
 	}
 
 	index = (index + delta + len(wordGoalOptions)) % len(wordGoalOptions)
-	m.draftSettings.wordGoal = wordGoalOptions[index]
+	m.settings.wordGoal = wordGoalOptions[index]
+	m.resetSession()
 }
 
 func (m *model) resetSession() {
-	prompt := buildPrompt(shuffleWords(m.currentWords(), m.rng))
+	prompt := buildPrompt(shuffleWords(m.defaultWords, m.rng))
 	m.session = newTypingSession(prompt)
 	m.state = stateReady
 	m.startedAt = time.Time{}
 	m.remaining = m.settings.duration
 	m.finishedElapsed = 0
-}
-
-func (m model) currentWords() []string {
-	if len(m.settings.customWords) > 0 {
-		return append([]string(nil), m.settings.customWords...)
-	}
-
-	return append([]string(nil), m.defaultWords...)
 }
 
 func (m *model) finishSession(elapsed time.Duration) {
@@ -498,19 +352,19 @@ func (m *model) finishSession(elapsed time.Duration) {
 
 func (m model) activeBindings() []key.Binding {
 	if m.state == stateFinished {
-		return []key.Binding{m.keys.restart, m.keys.settings, m.keys.quit}
+		return []key.Binding{m.keys.restart, m.keys.quit}
 	}
 
-	return []key.Binding{m.keys.settings, m.keys.quit}
+	return []key.Binding{m.keys.quit}
 }
 
 func (m model) statusCopy() string {
 	switch m.state {
 	case stateReady:
 		if m.settings.mode == modeWordGoal {
-			return fmt.Sprintf("Start typing to complete the %d-word goal. Press Ctrl+P for settings.", m.settings.wordGoal)
+			return fmt.Sprintf("Word Goal mode: %d words. Tab switches mode and left/right change the goal.", m.settings.wordGoal)
 		}
-		return fmt.Sprintf("Start typing to begin the %s test. Press Ctrl+P for settings.", formatDurationLabel(m.settings.duration))
+		return fmt.Sprintf("Timed mode: %s. Tab switches mode and left/right change the timer.", formatDurationLabel(m.settings.duration))
 	case stateRunning:
 		if m.settings.mode == modeWordGoal {
 			return fmt.Sprintf("Reach %d words to finish. Completed lines slide away; raw mistakes still count.", m.settings.wordGoal)
@@ -571,7 +425,7 @@ func (m model) renderPrompt(width int) string {
 	centeredCurrent := lipgloss.PlaceHorizontal(width, lipgloss.Center, currentLine.String())
 	centeredNext := lipgloss.PlaceHorizontal(width, lipgloss.Center, nextLine)
 
-	return strings.Join([]string{centeredCurrent, centeredNext}, "\n\n")
+	return strings.Join([]string{centeredCurrent, centeredNext}, "\n")
 }
 
 func (m model) renderResults(width int) string {
@@ -597,7 +451,7 @@ func (m model) renderResults(width int) string {
 		"",
 		results,
 		"",
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render("Press r to restart, ctrl+p for settings, or q to quit."),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render("Press r to restart or q to quit."),
 	}, "\n")
 
 	return lipgloss.NewStyle().
@@ -623,115 +477,50 @@ func (m model) renderStat(label string, value string) string {
 		Render(labelStyle.Render(label) + "\n" + valueStyle.Render(value))
 }
 
-func (m model) renderSettingsModal(screenWidth int) string {
-	width := minInt(76, maxInt(56, screenWidth-8))
-
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#F8FAFC")).
-		Render("Settings")
-
-	helpText := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#94A3B8")).
-		Render("Tab moves focus. Left and right change the selected control. Saving applies settings to a fresh session.")
-
-	modeLabel := m.renderSettingsLabel("Mode", m.settingsFocus == settingsFocusMode)
-	durationLabel := m.renderSettingsLabel("Time", m.settingsFocus == settingsFocusDuration)
-	wordGoalLabel := m.renderSettingsLabel("Word Goal", m.settingsFocus == settingsFocusWordGoal)
-	customLabel := m.renderSettingsLabel("Custom words", m.settingsFocus == settingsFocusCustomWords)
-	saveButton := m.renderButton("Save", m.settingsFocus == settingsFocusSave)
-	cancelButton := m.renderButton("Cancel", m.settingsFocus == settingsFocusCancel)
-
-	modeRow := lipgloss.JoinHorizontal(lipgloss.Left, m.renderModeOptions()...)
-	durationRow := lipgloss.JoinHorizontal(lipgloss.Left, m.renderDurationOptions()...)
-	wordGoalRow := lipgloss.JoinHorizontal(lipgloss.Left, m.renderWordGoalOptions()...)
-	actions := lipgloss.JoinHorizontal(lipgloss.Left, saveButton, cancelButton)
-
-	body := strings.Join([]string{
-		title,
-		helpText,
-		"",
-		modeLabel,
-		modeRow,
-		"",
-		durationLabel,
-		durationRow,
-		"",
-		wordGoalLabel,
-		wordGoalRow,
-		"",
-		customLabel,
-		m.renderSettingsInput(width - 8),
-		"",
-		actions,
-	}, "\n")
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
-		BorderForeground(lipgloss.Color("#38BDF8")).
-		Padding(1, 2).
-		Width(width).
-		Render(body)
-
-	if m.height > 0 {
-		return lipgloss.Place(screenWidth, m.height, lipgloss.Center, lipgloss.Center, modal)
+func (m model) renderStartOptions(width int) string {
+	optionLabel := "Time"
+	optionRow := m.renderDurationOptions()
+	if m.settings.mode == modeWordGoal {
+		optionLabel = "Word Goal"
+		optionRow = m.renderWordGoalOptions()
 	}
 
-	return modal
+	modeRow := lipgloss.JoinHorizontal(
+		lipgloss.Center,
+		m.renderOptionLabel("Mode"),
+		" ",
+		lipgloss.JoinHorizontal(lipgloss.Left, m.renderModeOptions()...),
+	)
+	optionLine := lipgloss.JoinHorizontal(
+		lipgloss.Center,
+		m.renderOptionLabel(optionLabel),
+		" ",
+		lipgloss.JoinHorizontal(lipgloss.Left, optionRow...),
+	)
+
+	return lipgloss.NewStyle().
+		Width(width).
+		Render(strings.Join([]string{modeRow, optionLine}, "\n"))
 }
 
-func (m model) renderSettingsLabel(label string, focused bool) string {
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
-	if focused {
-		style = style.Bold(true).Foreground(lipgloss.Color("#F8FAFC"))
-	}
-	return style.Render(label)
+func (m model) renderOptionLabel(label string) string {
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#F8FAFC")).
+		Render(label)
 }
 
 func (m model) renderModeOptions() []string {
-	modes := []struct {
-		mode  testMode
-		label string
-	}{
-		{mode: modeTimed, label: "Timed"},
-		{mode: modeWordGoal, label: "Word Goal"},
+	return []string{
+		m.renderChoiceChip("Timed", m.settings.mode == modeTimed),
+		m.renderChoiceChip("Word Goal", m.settings.mode == modeWordGoal),
 	}
-
-	options := make([]string, 0, len(modes))
-	for _, option := range modes {
-		selected := option.mode == m.draftSettings.mode
-		style := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#334155")).
-			Padding(0, 1).
-			MarginRight(1)
-		if selected {
-			style = style.
-				Bold(true).
-				BorderForeground(lipgloss.Color("#38BDF8")).
-				Foreground(lipgloss.Color("#F8FAFC"))
-		}
-		options = append(options, style.Render(option.label))
-	}
-	return options
 }
 
 func (m model) renderDurationOptions() []string {
 	options := make([]string, 0, len(durationOptions))
 	for _, option := range durationOptions {
-		selected := option == m.draftSettings.duration
-		style := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#334155")).
-			Padding(0, 1).
-			MarginRight(1)
-		if selected {
-			style = style.
-				Bold(true).
-				BorderForeground(lipgloss.Color("#38BDF8")).
-				Foreground(lipgloss.Color("#F8FAFC"))
-		}
-		options = append(options, style.Render(formatDurationLabel(option)))
+		options = append(options, m.renderChoiceChip(formatDurationLabel(option), option == m.settings.duration))
 	}
 	return options
 }
@@ -739,50 +528,30 @@ func (m model) renderDurationOptions() []string {
 func (m model) renderWordGoalOptions() []string {
 	options := make([]string, 0, len(wordGoalOptions))
 	for _, goal := range wordGoalOptions {
-		selected := goal == m.draftSettings.wordGoal
-		style := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#334155")).
-			Padding(0, 1).
-			MarginRight(1)
-		if selected {
-			style = style.
-				Bold(true).
-				BorderForeground(lipgloss.Color("#38BDF8")).
-				Foreground(lipgloss.Color("#F8FAFC"))
-		}
-		options = append(options, style.Render(fmt.Sprintf("%d words", goal)))
+		options = append(options, m.renderChoiceChip(fmt.Sprintf("%d words", goal), goal == m.settings.wordGoal))
 	}
 	return options
 }
 
-func (m model) renderSettingsInput(width int) string {
-	input := m.settingsInput.View()
+func (m model) renderChoiceChip(label string, selected bool) string {
 	style := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(lipgloss.Border{
+			Left:  "│",
+			Right: "│",
+		}).
 		BorderForeground(lipgloss.Color("#334155")).
 		Padding(0, 1).
-		Width(width)
+		MarginRight(1).
+		Foreground(lipgloss.Color("#CBD5E1"))
 
-	if m.settingsFocus == settingsFocusCustomWords {
-		style = style.BorderForeground(lipgloss.Color("#38BDF8"))
-	}
-
-	return style.Render(input)
-}
-
-func (m model) renderButton(label string, focused bool) string {
-	style := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#334155")).
-		Padding(0, 2).
-		MarginRight(1)
-	if focused {
+	if selected {
 		style = style.
 			Bold(true).
+			Foreground(lipgloss.Color("#F8FAFC")).
 			BorderForeground(lipgloss.Color("#38BDF8")).
-			Foreground(lipgloss.Color("#F8FAFC"))
+			Background(lipgloss.Color("#0F172A"))
 	}
+
 	return style.Render(label)
 }
 
@@ -810,14 +579,6 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(tickInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
-}
-
-func minDuration(a time.Duration, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-
-	return b
 }
 
 func minInt(a int, b int) int {
@@ -876,10 +637,6 @@ func buildPromptLines(prompt string) []promptLine {
 	}
 
 	return lines
-}
-
-func currentPromptLine(lines []promptLine, cursor int) promptLine {
-	return lines[currentPromptLineIndex(lines, cursor)]
 }
 
 func currentPromptLineIndex(lines []promptLine, cursor int) int {

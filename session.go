@@ -92,11 +92,6 @@ func repeatWords(words []string, count int) []string {
 	return repeated
 }
 
-func parseCustomWords(raw string) []string {
-	replacer := strings.NewReplacer(",", " ", "\n", " ", "\t", " ")
-	return strings.Fields(replacer.Replace(raw))
-}
-
 func wordGoalCursor(prompt string, goal int) int {
 	if goal <= 0 {
 		return 0

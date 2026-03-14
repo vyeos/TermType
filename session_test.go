@@ -38,21 +38,6 @@ func TestBuildPromptRepeatsShortLists(t *testing.T) {
 	}
 }
 
-func TestParseCustomWords(t *testing.T) {
-	words := parseCustomWords("alpha, beta\ngamma\tdelta")
-	want := []string{"alpha", "beta", "gamma", "delta"}
-
-	if len(words) != len(want) {
-		t.Fatalf("len(words) = %d, want %d", len(words), len(want))
-	}
-
-	for i := range want {
-		if words[i] != want[i] {
-			t.Fatalf("words[%d] = %q, want %q", i, words[i], want[i])
-		}
-	}
-}
-
 func TestWordGoalCursor(t *testing.T) {
 	prompt := "alpha beta gamma delta"
 	if got := wordGoalCursor(prompt, 2); got != len([]rune("alpha beta")) {
