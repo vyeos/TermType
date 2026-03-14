@@ -68,6 +68,7 @@ func newModel(words []string, rng *rand.Rand) model {
 }
 
 func (m model) Init() tea.Cmd {
+
 	return nil
 }
 

@@ -46,6 +46,7 @@ func loadWords(path string) ([]string, error) {
 }
 
 func shuffleWords(words []string, rng *rand.Rand) []string {
+	// New array just to return the shuffled array
 	shuffled := append([]string(nil), words...)
 
 	if rng == nil {
@@ -64,10 +65,7 @@ func buildPrompt(words []string) string {
 		return ""
 	}
 
-	limit := len(words)
-	if limit > promptWordCount {
-		limit = promptWordCount
-	}
+	limit := min(len(words), promptWordCount)
 
 	return strings.Join(words[:limit], " ")
 }
@@ -79,6 +77,7 @@ func newTypingSession(prompt string) typingSession {
 	}
 }
 
+// (the below text   ) is a value that can be used by the function but but not actually passed by the user
 func (s *typingSession) TypeRune(r rune) {
 	cursor := len(s.typed)
 	if cursor < len(s.promptRunes) && s.promptRunes[cursor] == r {
@@ -110,5 +109,6 @@ func (s typingSession) WPM(elapsed time.Duration) float64 {
 		return 0
 	}
 
+	// using 5.0 because WPM is calculated using 5. I created a func but had to remove it
 	return float64(s.correctChars) / 5.0 / elapsed.Minutes()
 }
