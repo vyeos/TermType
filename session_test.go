@@ -53,6 +53,24 @@ func TestParseCustomWords(t *testing.T) {
 	}
 }
 
+func TestWordGoalCursor(t *testing.T) {
+	prompt := "alpha beta gamma delta"
+	if got := wordGoalCursor(prompt, 2); got != len([]rune("alpha beta")) {
+		t.Fatalf("wordGoalCursor = %d, want %d", got, len([]rune("alpha beta")))
+	}
+}
+
+func TestCompletedPromptWords(t *testing.T) {
+	prompt := "alpha beta gamma delta"
+	if got := completedPromptWords(prompt, len([]rune("alpha beta"))); got != 2 {
+		t.Fatalf("completedPromptWords = %d, want 2", got)
+	}
+
+	if got := completedPromptWords(prompt, len([]rune("alpha be"))); got != 1 {
+		t.Fatalf("completedPromptWords with partial second word = %d, want 1", got)
+	}
+}
+
 func TestTypingSessionFullyCorrectInput(t *testing.T) {
 	session := newTypingSession("cat")
 	for _, r := range "cat" {

@@ -97,6 +97,52 @@ func parseCustomWords(raw string) []string {
 	return strings.Fields(replacer.Replace(raw))
 }
 
+func wordGoalCursor(prompt string, goal int) int {
+	if goal <= 0 {
+		return 0
+	}
+
+	words := strings.Fields(prompt)
+	if len(words) == 0 {
+		return 0
+	}
+
+	if goal > len(words) {
+		goal = len(words)
+	}
+
+	return len([]rune(strings.Join(words[:goal], " ")))
+}
+
+func completedPromptWords(prompt string, typedCount int) int {
+	if typedCount <= 0 {
+		return 0
+	}
+
+	words := strings.Fields(prompt)
+	if len(words) == 0 {
+		return 0
+	}
+
+	cursor := 0
+	completed := 0
+	for i, word := range words {
+		cursor += len([]rune(word))
+		if typedCount < cursor {
+			break
+		}
+
+		completed++
+		if i == len(words)-1 {
+			break
+		}
+
+		cursor++
+	}
+
+	return completed
+}
+
 func newTypingSession(prompt string) typingSession {
 	return typingSession{
 		prompt:      prompt,
