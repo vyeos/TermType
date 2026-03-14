@@ -1,6 +1,9 @@
 # TermType
 
 Terminal based typing practice in your terminal, built with Go
+
+![ScreenShot of TermType](./TermType_shot.png)
+
 ## Install
 
 ### With Go
