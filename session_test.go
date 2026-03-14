@@ -25,6 +25,34 @@ func TestLoadWordsBuildsNonEmptyPrompt(t *testing.T) {
 	}
 }
 
+func TestBuildPromptRepeatsShortLists(t *testing.T) {
+	prompt := buildPrompt([]string{"alpha", "beta"})
+	words := strings.Fields(prompt)
+
+	if len(words) != promptWordCount {
+		t.Fatalf("len(words) = %d, want %d", len(words), promptWordCount)
+	}
+
+	if words[0] != "alpha" || words[1] != "beta" || words[2] != "alpha" {
+		t.Fatalf("unexpected repeated sequence: %v", words[:3])
+	}
+}
+
+func TestParseCustomWords(t *testing.T) {
+	words := parseCustomWords("alpha, beta\ngamma\tdelta")
+	want := []string{"alpha", "beta", "gamma", "delta"}
+
+	if len(words) != len(want) {
+		t.Fatalf("len(words) = %d, want %d", len(words), len(want))
+	}
+
+	for i := range want {
+		if words[i] != want[i] {
+			t.Fatalf("words[%d] = %q, want %q", i, words[i], want[i])
+		}
+	}
+}
+
 func TestTypingSessionFullyCorrectInput(t *testing.T) {
 	session := newTypingSession("cat")
 	for _, r := range "cat" {

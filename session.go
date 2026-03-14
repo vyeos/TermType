@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	testDuration    = 30 * time.Second
-	tickInterval    = 100 * time.Millisecond
-	promptWordCount = 200
+	defaultTestDuration = 30 * time.Second
+	tickInterval        = 100 * time.Millisecond
+	promptWordCount     = 200
 )
 
 type typingSession struct {
@@ -67,7 +67,34 @@ func buildPrompt(words []string) string {
 
 	limit := min(len(words), promptWordCount)
 
+	if len(words) < promptWordCount {
+		return strings.Join(repeatWords(words, promptWordCount), " ")
+	}
+
 	return strings.Join(words[:limit], " ")
+}
+
+func repeatWords(words []string, count int) []string {
+	if len(words) == 0 || count <= 0 {
+		return nil
+	}
+
+	repeated := make([]string, 0, count)
+	for len(repeated) < count {
+		for _, word := range words {
+			repeated = append(repeated, word)
+			if len(repeated) == count {
+				break
+			}
+		}
+	}
+
+	return repeated
+}
+
+func parseCustomWords(raw string) []string {
+	replacer := strings.NewReplacer(",", " ", "\n", " ", "\t", " ")
+	return strings.Fields(replacer.Replace(raw))
 }
 
 func newTypingSession(prompt string) typingSession {
