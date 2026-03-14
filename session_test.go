@@ -1,0 +1,123 @@
+package main
+
+import (
+	"math"
+	"math/rand"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestLoadWordsBuildsNonEmptyPrompt(t *testing.T) {
+	words, err := loadWords("500_common_words.txt")
+	if err != nil {
+		t.Fatalf("loadWords returned error: %v", err)
+	}
+
+	if len(words) == 0 {
+		t.Fatal("expected at least one word")
+	}
+
+	shuffled := shuffleWords(words, rand.New(rand.NewSource(7)))
+	prompt := buildPrompt(shuffled)
+	if strings.TrimSpace(prompt) == "" {
+		t.Fatal("expected non-empty prompt")
+	}
+}
+
+func TestTypingSessionFullyCorrectInput(t *testing.T) {
+	session := newTypingSession("cat")
+	for _, r := range "cat" {
+		session.TypeRune(r)
+	}
+
+	if session.charsTyped != 3 {
+		t.Fatalf("charsTyped = %d, want 3", session.charsTyped)
+	}
+
+	if session.correctChars != 3 {
+		t.Fatalf("correctChars = %d, want 3", session.correctChars)
+	}
+
+	if session.Accuracy() != 100 {
+		t.Fatalf("accuracy = %.2f, want 100", session.Accuracy())
+	}
+}
+
+func TestTypingSessionIncorrectCharacters(t *testing.T) {
+	session := newTypingSession("cat")
+	for _, r := range "car" {
+		session.TypeRune(r)
+	}
+
+	if session.charsTyped != 3 {
+		t.Fatalf("charsTyped = %d, want 3", session.charsTyped)
+	}
+
+	if session.correctChars != 2 {
+		t.Fatalf("correctChars = %d, want 2", session.correctChars)
+	}
+
+	assertNear(t, session.Accuracy(), 66.6667, 0.01)
+}
+
+func TestTypingSessionBackspaceKeepsRawErrors(t *testing.T) {
+	session := newTypingSession("cat")
+
+	session.TypeRune('x')
+	session.Backspace()
+	session.TypeRune('c')
+	session.TypeRune('a')
+	session.TypeRune('t')
+
+	if session.charsTyped != 4 {
+		t.Fatalf("charsTyped = %d, want 4", session.charsTyped)
+	}
+
+	if session.correctChars != 3 {
+		t.Fatalf("correctChars = %d, want 3", session.correctChars)
+	}
+
+	if string(session.typed) != "cat" {
+		t.Fatalf("typed = %q, want %q", string(session.typed), "cat")
+	}
+
+	assertNear(t, session.Accuracy(), 75, 0.001)
+}
+
+func TestTypingSessionMixedInput(t *testing.T) {
+	session := newTypingSession("cat dog")
+
+	for _, r := range []rune{'c', 'a', 'x'} {
+		session.TypeRune(r)
+	}
+
+	session.Backspace()
+
+	for _, r := range []rune{'t', ' ', 'd', 'o', 'z'} {
+		session.TypeRune(r)
+	}
+
+	if session.charsTyped != 8 {
+		t.Fatalf("charsTyped = %d, want 8", session.charsTyped)
+	}
+
+	if session.correctChars != 6 {
+		t.Fatalf("correctChars = %d, want 6", session.correctChars)
+	}
+
+	if string(session.typed) != "cat doz" {
+		t.Fatalf("typed = %q, want %q", string(session.typed), "cat doz")
+	}
+
+	assertNear(t, session.Accuracy(), 75, 0.001)
+	assertNear(t, session.WPM(30*time.Second), 2.4, 0.001)
+}
+
+func assertNear(t *testing.T, got float64, want float64, tolerance float64) {
+	t.Helper()
+
+	if math.Abs(got-want) > tolerance {
+		t.Fatalf("got %.4f, want %.4f (+/- %.4f)", got, want, tolerance)
+	}
+}

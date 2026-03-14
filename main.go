@@ -4,26 +4,25 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
-func shuffleWords() {
-	dat, err := os.ReadFile("500_common_words.txt")
-	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		return
-	}
-
-	words := strings.Split(strings.TrimSpace(string(dat)), "\n")
-	rand.Shuffle(len(words), func(i, j int) {
-		words[i], words[j] = words[j], words[i]
-	})
-
-	for _, word := range words {
-		fmt.Println(word)
-	}
-}
+const wordsFile = "500_common_words.txt"
 
 func main() {
-	shuffleWords()
+	words, err := loadWords(wordsFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	program := tea.NewProgram(newModel(words, rng), tea.WithAltScreen())
+
+	if _, err := program.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 }
