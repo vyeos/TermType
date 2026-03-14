@@ -86,12 +86,12 @@ func newModel(words []string, rng *rand.Rand) model {
 		finishedElapsed: 0,
 		keys: keyMap{
 			quit: key.NewBinding(
-				key.WithKeys("q", "ctrl+c"),
-				key.WithHelp("q", "quit"),
+				key.WithKeys("ctrl+q", "ctrl+c"),
+				key.WithHelp("ctrl+q", "quit"),
 			),
 			restart: key.NewBinding(
-				key.WithKeys("r"),
-				key.WithHelp("r", "restart"),
+				key.WithKeys("ctrl+r"),
+				key.WithHelp("ctrl+r", "restart"),
 			),
 		},
 	}
@@ -136,14 +136,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case tea.KeyMsg:
+		if key.Matches(msg, m.keys.restart) {
+			m.resetSession()
+			return m, nil
+		}
 		if key.Matches(msg, m.keys.quit) {
 			return m, tea.Quit
 		}
 
 		if m.state == stateFinished {
-			if key.Matches(msg, m.keys.restart) {
-				m.resetSession()
-			}
 			return m, nil
 		}
 
@@ -351,11 +352,7 @@ func (m *model) finishSession(elapsed time.Duration) {
 }
 
 func (m model) activeBindings() []key.Binding {
-	if m.state == stateFinished {
-		return []key.Binding{m.keys.restart, m.keys.quit}
-	}
-
-	return []key.Binding{m.keys.quit}
+	return []key.Binding{m.keys.restart, m.keys.quit}
 }
 
 func (m model) statusCopy() string {
@@ -473,7 +470,7 @@ func (m model) footerHelp() string {
 	if m.state == stateReady {
 		return lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#94A3B8")).
-			Render("tab switch mode • left/right change option • q quit")
+			Render("tab switch mode • left/right change option • ctrl+r reset • ctrl+q quit")
 	}
 
 	return m.help.ShortHelpView(m.activeBindings())
@@ -605,10 +602,10 @@ func formatDurationLabel(duration time.Duration) string {
 
 func (m model) resultsHeadline() string {
 	if m.settings.mode == modeWordGoal {
-		return "Word goal complete"
+		return fmt.Sprintf("%d-word goal complete", m.settings.wordGoal)
 	}
 
-	return "Session complete"
+	return fmt.Sprintf("%s timed test complete", formatDurationLabel(m.settings.duration))
 }
 
 func buildPromptLines(prompt string) []promptLine {
