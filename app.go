@@ -274,7 +274,7 @@ func (m model) View() string {
 		body.WriteString("\n\n")
 	}
 
-	body.WriteString(m.help.ShortHelpView(m.activeBindings()))
+	body.WriteString(m.footerHelp())
 
 	content := lipgloss.NewStyle().
 		Padding(1, 1).
@@ -361,20 +361,14 @@ func (m model) activeBindings() []key.Binding {
 func (m model) statusCopy() string {
 	switch m.state {
 	case stateReady:
-		if m.settings.mode == modeWordGoal {
-			return fmt.Sprintf("Word Goal mode: %d words. Tab switches mode and left/right change the goal.", m.settings.wordGoal)
-		}
-		return fmt.Sprintf("Timed mode: %s. Tab switches mode and left/right change the timer.", formatDurationLabel(m.settings.duration))
+		return "Start typing to begin the test."
 	case stateRunning:
 		if m.settings.mode == modeWordGoal {
 			return fmt.Sprintf("Reach %d words to finish. Completed lines slide away; raw mistakes still count.", m.settings.wordGoal)
 		}
 		return "Type through the line. Completed lines slide away; raw mistakes still count."
 	case stateFinished:
-		if m.settings.mode == modeWordGoal {
-			return "Word goal complete. Review your results or press r for a fresh run."
-		}
-		return "Time is up. Review your results or press r for a fresh run."
+		return "Review your results."
 	default:
 		return ""
 	}
@@ -450,8 +444,6 @@ func (m model) renderResults(width int) string {
 		headline,
 		"",
 		results,
-		"",
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render("Press r to restart or q to quit."),
 	}, "\n")
 
 	return lipgloss.NewStyle().
@@ -475,6 +467,16 @@ func (m model) renderStat(label string, value string) string {
 		Padding(0, 1).
 		MarginRight(1).
 		Render(labelStyle.Render(label) + "\n" + valueStyle.Render(value))
+}
+
+func (m model) footerHelp() string {
+	if m.state == stateReady {
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#94A3B8")).
+			Render("tab switch mode • left/right change option • q quit")
+	}
+
+	return m.help.ShortHelpView(m.activeBindings())
 }
 
 func (m model) renderStartOptions(width int) string {
