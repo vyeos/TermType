@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"strings"
 	"time"
@@ -22,7 +21,15 @@ const (
 	stateFinished
 )
 
+const promptWordsPerLine = 12
+
 type tickMsg time.Time
+
+type promptLine struct {
+	start int
+	end   int
+	text  string
+}
 
 type keyMap struct {
 	quit    key.Binding
@@ -152,6 +159,7 @@ func (m model) View() string {
 		Foreground(lipgloss.Color("#94A3B8"))
 
 	statusLine := subtitle.Render(m.statusCopy())
+	timerBox := m.renderStat("Time", fmt.Sprintf("%.1fs", m.remainingSeconds()))
 	prompt := m.renderPrompt(contentWidth - 4)
 	promptBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -159,14 +167,6 @@ func (m model) View() string {
 		Padding(1, 2).
 		Width(contentWidth).
 		Render(prompt)
-
-	statsRow := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		m.renderStat("Time", fmt.Sprintf("%.1fs", m.remainingSeconds())),
-		m.renderStat("Chars", fmt.Sprintf("%d", m.session.charsTyped)),
-		m.renderStat("Accuracy", fmt.Sprintf("%.1f%%", m.session.Accuracy())),
-		m.renderStat("WPM", fmt.Sprintf("%.1f", m.session.WPM(m.elapsed()))),
-	)
 
 	var body strings.Builder
 	body.WriteString(title)
@@ -178,7 +178,7 @@ func (m model) View() string {
 		body.WriteString(m.renderResults(contentWidth))
 		body.WriteString("\n\n")
 	} else {
-		body.WriteString(statsRow)
+		body.WriteString(timerBox)
 		body.WriteString("\n\n")
 		body.WriteString(promptBox)
 		body.WriteString("\n\n")
@@ -219,7 +219,7 @@ func (m model) statusCopy() string {
 	case stateReady:
 		return "Start typing to begin the 30 second test."
 	case stateRunning:
-		return "Type through the prompt. Backspace edits text, but raw mistakes still count."
+		return "Type through the line. Completed lines slide away; raw mistakes still count."
 	case stateFinished:
 		return "Time is up. Review your results or press r for a fresh run."
 	default:
@@ -228,21 +228,14 @@ func (m model) statusCopy() string {
 }
 
 func (m model) renderPrompt(width int) string {
-	prompt := m.session.promptRunes
-	if len(prompt) == 0 {
+	lines := buildPromptLines(m.session.prompt)
+	if len(lines) == 0 {
 		return "No prompt available."
 	}
 
 	cursor := len(m.session.typed)
-	start := maxInt(0, cursor-40)
-	for start > 0 && prompt[start-1] != ' ' {
-		start--
-	}
-
-	end := minInt(len(prompt), start+240)
-	for end < len(prompt) && prompt[end] != ' ' {
-		end++
-	}
+	lineIndex := currentPromptLineIndex(lines, cursor)
+	prompt := m.session.promptRunes
 
 	correctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E"))
 	incorrectStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F97316"))
@@ -251,35 +244,35 @@ func (m model) renderPrompt(width int) string {
 		Foreground(lipgloss.Color("#0F172A")).
 		Bold(true)
 	upcomingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#CBD5E1"))
-	fadedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#64748B"))
 
-	var b strings.Builder
-	if start > 0 {
-		b.WriteString(fadedStyle.Render("... "))
-	}
-
-	for i := start; i < end; i++ {
+	var currentLine strings.Builder
+	line := lines[lineIndex]
+	for i := line.start; i < line.end; i++ {
 		chunk := string(prompt[i])
 
 		switch {
 		case i < len(m.session.typed):
 			if m.session.typed[i] == prompt[i] {
-				b.WriteString(correctStyle.Render(chunk))
+				currentLine.WriteString(correctStyle.Render(chunk))
 			} else {
-				b.WriteString(incorrectStyle.Render(chunk))
+				currentLine.WriteString(incorrectStyle.Render(chunk))
 			}
 		case i == len(m.session.typed):
-			b.WriteString(currentStyle.Render(chunk))
+			currentLine.WriteString(currentStyle.Render(chunk))
 		default:
-			b.WriteString(upcomingStyle.Render(chunk))
+			currentLine.WriteString(upcomingStyle.Render(chunk))
 		}
 	}
 
-	if end < len(prompt) {
-		b.WriteString(fadedStyle.Render(" ..."))
+	nextLine := ""
+	if lineIndex+1 < len(lines) {
+		nextLine = upcomingStyle.Render(lines[lineIndex+1].text)
 	}
 
-	return lipgloss.NewStyle().Width(width).Render(b.String())
+	centeredCurrent := lipgloss.PlaceHorizontal(width, lipgloss.Center, currentLine.String())
+	centeredNext := lipgloss.PlaceHorizontal(width, lipgloss.Center, nextLine)
+
+	return strings.Join([]string{centeredCurrent, centeredNext}, "\n\n")
 }
 
 func (m model) renderResults(width int) string {
@@ -342,7 +335,11 @@ func (m model) elapsed() time.Duration {
 }
 
 func (m model) remainingSeconds() float64 {
-	return math.Max(0, m.remaining.Seconds())
+	if m.remaining < 0 {
+		return 0
+	}
+
+	return m.remaining.Seconds()
 }
 
 func tickCmd() tea.Cmd {
@@ -373,4 +370,52 @@ func maxInt(a int, b int) int {
 	}
 
 	return b
+}
+
+func buildPromptLines(prompt string) []promptLine {
+	words := strings.Fields(prompt)
+	if len(words) == 0 {
+		return nil
+	}
+
+	lines := make([]promptLine, 0, (len(words)+promptWordsPerLine-1)/promptWordsPerLine)
+	cursor := 0
+
+	for i := 0; i < len(words); i += promptWordsPerLine {
+		endWord := minInt(len(words), i+promptWordsPerLine)
+		lineText := strings.Join(words[i:endWord], " ")
+		lineLength := len([]rune(lineText))
+		lineEnd := cursor + lineLength
+
+		if endWord < len(words) {
+			lineEnd++
+		}
+
+		lines = append(lines, promptLine{
+			start: cursor,
+			end:   lineEnd,
+			text:  lineText,
+		})
+		cursor = lineEnd
+	}
+
+	return lines
+}
+
+func currentPromptLine(lines []promptLine, cursor int) promptLine {
+	return lines[currentPromptLineIndex(lines, cursor)]
+}
+
+func currentPromptLineIndex(lines []promptLine, cursor int) int {
+	if len(lines) == 0 {
+		return 0
+	}
+
+	for i, line := range lines {
+		if cursor < line.end {
+			return i
+		}
+	}
+
+	return len(lines) - 1
 }
