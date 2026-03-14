@@ -9,7 +9,7 @@ Terminal based typing practice in your terminal, built with Go
 ### With Go
 
 ```bash
-go install github.com/vyeos/gotap@latest
+go install github.com/vyeos/termtype@latest
 ```
 
 Then run:
@@ -20,7 +20,7 @@ termtype
 
 ### Without Go
 
-Download a prebuilt binary from [GitHub Releases](https://github.com/vyeos/gotap/releases), unpack it, and move `termtype` into a directory on your `PATH`.
+Download a prebuilt binary from [GitHub Releases](https://github.com/vyeos/termtype/releases), unpack it, and move `termtype` into a directory on your `PATH`.
 
 ## Usage
 

@@ -1,4 +1,4 @@
-module github.com/vyeos/gotap
+module github.com/vyeos/termtype
 
 go 1.26.1
 

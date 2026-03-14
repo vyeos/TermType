@@ -38,4 +38,4 @@ checksum:
 release:
   github:
     owner: vyeos
-    name: gotap
+    name: termtype
