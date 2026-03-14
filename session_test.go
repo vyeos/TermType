@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoadWordsBuildsNonEmptyPrompt(t *testing.T) {
-	words, err := loadWords("500_common_words.txt")
+	words, err := loadWords()
 	if err != nil {
 		t.Fatalf("loadWords returned error: %v", err)
 	}

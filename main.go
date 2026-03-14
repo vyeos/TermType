@@ -9,10 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const wordsFile = "500_common_words.txt"
-
 func main() {
-	words, err := loadWords(wordsFile)
+	words, err := loadWords()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

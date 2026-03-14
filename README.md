@@ -1,16 +1,28 @@
-# GoTap
+# TermType
 
-Terminal based type testing using Golang.
+Terminal based typing practice in your terminal, built with Go
+## Install
 
-## Initial Plan
-- Get/generate common words to pick from
-- Start 30s timer and user will see and type the words
-- Track characters
-- Show wpm, characters typed, accuracy
-- Session end
+### With Go
 
-## Future Plan
-- use flags to use custom time
-- use flags to set words as stopwatch intead of time
-- allow user to add words
-- track weak characters/words
+```bash
+go install github.com/vyeos/gotap@latest
+```
+
+Then run:
+
+```bash
+termtype
+```
+
+### Without Go
+
+Download a prebuilt binary from [GitHub Releases](https://github.com/vyeos/gotap/releases), unpack it, and move `termtype` into a directory on your `PATH`.
+
+## Usage
+
+- `Tab` switches between `Timed` and `Word Goal`
+- `Left/Right` changes the active time or word-goal option
+- Start typing to begin
+- `Ctrl+R` resets
+- `Ctrl+Q` quits

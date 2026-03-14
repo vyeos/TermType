@@ -1,9 +1,9 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"math/rand"
-	"os"
 	"strings"
 	"time"
 )
@@ -22,13 +22,11 @@ type typingSession struct {
 	correctChars int
 }
 
-func loadWords(path string) ([]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read words file: %w", err)
-	}
+//go:embed 500_common_words.txt
+var embeddedWords string
 
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+func loadWords() ([]string, error) {
+	lines := strings.Split(strings.TrimSpace(embeddedWords), "\n")
 	words := make([]string, 0, len(lines))
 
 	for _, line := range lines {
@@ -39,7 +37,7 @@ func loadWords(path string) ([]string, error) {
 	}
 
 	if len(words) == 0 {
-		return nil, fmt.Errorf("no words found in %s", path)
+		return nil, fmt.Errorf("embedded word list is empty")
 	}
 
 	return words, nil

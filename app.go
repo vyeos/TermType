@@ -239,7 +239,7 @@ func (m model) View() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#F8FAFC")).
-		Render("GoTap")
+		Render("TermType")
 
 	subtitle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#94A3B8"))

@@ -1,4 +1,4 @@
-module github.com/gotap
+module github.com/vyeos/gotap
 
 go 1.26.1
 
